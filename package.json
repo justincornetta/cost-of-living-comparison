@@ -1,0 +1,25 @@
+{
+  "name": "cost-of-living-comparison",
+  "version": "1.0.0",
+  "description": "Financial comparison tool for NYC vs NJ vs Philadelphia with 2026 tax calculations",
+  "main": "src/CostOfLivingDesktop.jsx",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build"
+  },
+  "keywords": [
+    "cost-of-living",
+    "tax-calculator",
+    "nyc",
+    "new-jersey",
+    "philadelphia",
+    "financial-planning",
+    "react"
+  ],
+  "author": "Justin Cornetta",
+  "license": "MIT",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
