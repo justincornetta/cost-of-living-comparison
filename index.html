@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cost of Living Comparison — NYC vs NJ vs Philadelphia</title>
+  <meta name="description" content="Compare net income, expenses, savings, and long-term wealth across NYC, NJ, and Philadelphia with 2026 tax calculations." />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { -webkit-font-smoothing: antialiased; }
+  </style>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useMemo } = React;
+
+function FinancialComparisonToolDesktop() {
+  // ===========================================
+  // TAX BRACKETS (2026)
+  // ===========================================
+  const federalBrackets = [
+    { min: 0, max: 12400, rate: 0.10 },
+    { min: 12400, max: 50400, rate: 0.12 },
+    { min: 50400, max: 105700, rate: 0.22 },
+    { min: 105700, max: 201775, rate: 0.24 },
+    { min: 201775, max: 256225, rate: 0.32 },
+    { min: 256225, max: 640600, rate: 0.35 },
+    { min: 640600, max: Infinity, rate: 0.37 },
+  ];
+
+  const nyStateBrackets = [
+    { min: 0, max: 8500, rate: 0.039 },
+    { min: 8500, max: 11700, rate: 0.044 },
+    { min: 11700, max: 13900, rate: 0.0515 },
+    { min: 13900, max: 80650, rate: 0.054 },
+    { min: 80650, max: 215400, rate: 0.059 },
+    { min: 215400, max: 1077550, rate: 0.0685 },
+    { min: 1077550, max: 5000000, rate: 0.0965 },
+    { min: 5000000, max: 25000000, rate: 0.103 },
+    { min: 25000000, max: Infinity, rate: 0.109 },
+  ];
+
+  const nycLocalBrackets = [
+    { min: 0, max: 12000, rate: 0.03078 },
+    { min: 12000, max: 25000, rate: 0.03762 },
+    { min: 25000, max: 50000, rate: 0.03819 },
+    { min: 50000, max: Infinity, rate: 0.03876 },
+  ];
+
+  const njStateBrackets = [
+    { min: 0, max: 20000, rate: 0.014 },
+    { min: 20000, max: 35000, rate: 0.0175 },
+    { min: 35000, max: 40000, rate: 0.035 },
+    { min: 40000, max: 75000, rate: 0.05525 },
+    { min: 75000, max: 500000, rate: 0.0637 },
+    { min: 500000, max: 1000000, rate: 0.0897 },
+    { min: 1000000, max: Infinity, rate: 0.1075 },
+  ];
+
+  const paStateRate = 0.0307;
+  const phillyWageTaxRate = 0.0374;
+
+  const calculateBracketTax = (income, brackets) => {
+    let tax = 0, remaining = income;
+    for (const b of brackets) {
+      if (remaining <= 0) break;
+      tax += Math.min(remaining, b.max - b.min) * b.rate;
+      remaining -= b.max - b.min;
+    }
+    return tax;
+  };
+
+  // ===========================================
+  // STATE WITH YOUR CURRENT DEFAULTS
+  // ===========================================
+  const [activeTab, setActiveTab] = useState('comparison');
+  
+  const [income, setIncome] = useState({ 
+    annualSalary: 90000, 
+    annualBonus: 0, 
+    contribution401k: 4, 
+    hsaAnnual: 3850, 
+    otherPreTaxAnnual: 0 
+  });
+  
+  const [taxOverride, setTaxOverride] = useState({ 
+    useManualRates: false, 
+    manualFederal: 22, 
+    manualNyState: 5.9, 
+    manualNyLocal: 3.876, 
+    manualNjState: 6.37, 
+    manualPaState: 3.07, 
+    manualPhillyLocal: 3.74 
+  });
+  
+  const [expenses, setExpenses] = useState({
+    nyc: { rent: 1900, utilities: 150, transportation: 100, food: 600, entertainment: 250, healthcare: 0, misc: 1000 },
+    nj: { rent: 1700, utilities: 150, transportation: 200, food: 550, entertainment: 250, healthcare: 0, misc: 1000 },
+    philly: { rent: 1350, utilities: 150, transportation: 50, food: 500, entertainment: 250, healthcare: 0, misc: 1000 },
+  });
+  
+  const [proj, setProj] = useState({ 
+    currentNetWorth: 50000, 
+    projectionYears: 10, 
+    investmentReturnRate: 7, 
+    salaryGrowthRate: 3, 
+    inflationRate: 2.5, 
+    savingsAllocation: 80, 
+    includeEmployerMatch: true, 
+    employerMatchPercent: 50, 
+    employerMatchLimit: 6 
+  });
+
+  // ===========================================
+  // CALCULATIONS
+  // ===========================================
+  const calculations = useMemo(() => {
+    const locs = ['nyc', 'nj', 'philly'];
+    const results = {};
+    
+    const grossAnnual = income.annualSalary + income.annualBonus;
+    const annual401k = income.annualSalary * (income.contribution401k / 100);
+    const federalPreTax = annual401k + income.hsaAnnual + income.otherPreTaxAnnual;
+    const federalTaxableAnnual = grossAnnual - federalPreTax;
+    const paTaxableAnnual = grossAnnual - annual401k;
+    const phillyTaxableAnnual = grossAnnual - annual401k;
+
+    const fedTax = taxOverride.useManualRates 
+      ? federalTaxableAnnual * taxOverride.manualFederal / 100 
+      : calculateBracketTax(federalTaxableAnnual, federalBrackets);
+    const fedRate = taxOverride.useManualRates 
+      ? taxOverride.manualFederal 
+      : (federalTaxableAnnual > 0 ? fedTax / federalTaxableAnnual * 100 : 0);
+    
+    const computedRates = { federal: fedRate };
+    const employerMatch = proj.includeEmployerMatch 
+      ? Math.min(
+          income.annualSalary * proj.employerMatchLimit / 100, 
+          income.annualSalary * income.contribution401k / 100 * proj.employerMatchPercent / 100
+        ) 
+      : 0;
+
+    locs.forEach(loc => {
+      let stTax, locTax, stRate, locRate;
+      let taxableForState = loc === 'philly' ? paTaxableAnnual : federalTaxableAnnual;
+      let taxableForLocal = loc === 'philly' ? phillyTaxableAnnual : federalTaxableAnnual;
+      
+      if (taxOverride.useManualRates) {
+        if (loc === 'nyc') { 
+          stTax = taxableForState * taxOverride.manualNyState / 100; 
+          locTax = taxableForLocal * taxOverride.manualNyLocal / 100; 
+          stRate = taxOverride.manualNyState; 
+          locRate = taxOverride.manualNyLocal; 
+        } else if (loc === 'nj') { 
+          stTax = taxableForState * taxOverride.manualNjState / 100; 
+          locTax = 0; 
+          stRate = taxOverride.manualNjState; 
+          locRate = 0; 
+        } else { 
+          stTax = taxableForState * taxOverride.manualPaState / 100; 
+          locTax = taxableForLocal * taxOverride.manualPhillyLocal / 100; 
+          stRate = taxOverride.manualPaState; 
+          locRate = taxOverride.manualPhillyLocal; 
+        }
+      } else {
+        if (loc === 'nyc') { 
+          stTax = calculateBracketTax(taxableForState, nyStateBrackets); 
+          locTax = calculateBracketTax(taxableForLocal, nycLocalBrackets); 
+        } else if (loc === 'nj') { 
+          stTax = calculateBracketTax(taxableForState, njStateBrackets); 
+          locTax = 0; 
+        } else { 
+          stTax = taxableForState * paStateRate; 
+          locTax = taxableForLocal * phillyWageTaxRate; 
+        }
+        stRate = taxableForState > 0 ? stTax / taxableForState * 100 : 0;
+        locRate = taxableForLocal > 0 ? locTax / taxableForLocal * 100 : 0;
+      }
+      
+      computedRates[loc] = { state: stRate, local: locRate };
+      
+      const totalTaxAnnual = fedTax + stTax + locTax;
+      const totalTaxMonthly = totalTaxAnnual / 12;
+      const netMonthly = grossAnnual / 12 - federalPreTax / 12 - totalTaxMonthly;
+      const exp = expenses[loc];
+      const totalExp = exp.rent + exp.utilities + exp.transportation + exp.food + exp.entertainment + exp.healthcare + exp.misc;
+      
+      results[loc] = { 
+        grossMonthly: grossAnnual / 12, 
+        monthlyPreTax: federalPreTax / 12, 
+        federalTax: fedTax / 12, 
+        stateTax: stTax / 12, 
+        localTax: locTax / 12, 
+        totalTax: totalTaxMonthly, 
+        netMonthly, 
+        totalExpenses: totalExp, 
+        monthlySavings: netMonthly - totalExp, 
+        annualSavings: (netMonthly - totalExp) * 12, 
+        effectiveTaxRate: totalTaxAnnual / grossAnnual * 100, 
+        savingsRate: netMonthly > 0 ? (netMonthly - totalExp) / netMonthly * 100 : 0, 
+        federalEffectiveRate: fedRate, 
+        stateEffectiveRate: stRate, 
+        localEffectiveRate: locRate, 
+        combinedStatLocalRate: stRate + locRate, 
+        annual401k, 
+        employerMatch,
+        stateTaxableAnnual: taxableForState,
+        localTaxableAnnual: taxableForLocal,
+      };
+    });
+    
+    const sorted = [...locs].sort((a, b) => results[b].monthlySavings - results[a].monthlySavings);
+    results.winner = sorted[0]; 
+    results.ranking = sorted; 
+    results.computedRates = computedRates; 
+    results.taxableAnnual = federalTaxableAnnual; 
+    results.grossAnnual = grossAnnual;
+    results.federalPreTax = federalPreTax;
+    results.annual401k = annual401k;
+    
+    return results;
+  }, [income, taxOverride, expenses, proj.includeEmployerMatch, proj.employerMatchPercent, proj.employerMatchLimit]);
+
+  // ===========================================
+  // PROJECTIONS
+  // ===========================================
+  const projections = useMemo(() => {
+    const locs = ['nyc', 'nj', 'philly'];
+    const results = {};
+    
+    locs.forEach(loc => {
+      const data = [];
+      let nw = proj.currentNetWorth;
+      let invested = nw * proj.savingsAllocation / 100;
+      let cash = nw - invested;
+      let salary = income.annualSalary;
+      let expAnnual = calculations[loc].totalExpenses * 12;
+      
+      for (let y = 0; y <= proj.projectionYears; y++) {
+        if (y === 0) { 
+          data.push({ year: y, netWorth: nw, invested, cash, savings: 0, contributions: 0, gains: 0, salary, expenses: expAnnual }); 
+          continue; 
+        }
+        
+        salary *= 1 + proj.salaryGrowthRate / 100;
+        expAnnual *= 1 + proj.inflationRate / 100;
+        
+        const gross = salary + income.annualBonus;
+        const k401 = salary * income.contribution401k / 100;
+        const preTaxTotal = k401 + income.hsaAnnual + income.otherPreTaxAnnual;
+        
+        const effectiveRate = calculations[loc].effectiveTaxRate / 100;
+        const taxes = gross * effectiveRate;
+        const net = gross - preTaxTotal - taxes;
+        const savings = net - expAnnual;
+        
+        const match = proj.includeEmployerMatch 
+          ? Math.min(salary * proj.employerMatchLimit / 100, k401 * proj.employerMatchPercent / 100) 
+          : 0;
+        
+        const gains = invested * proj.investmentReturnRate / 100;
+        const toInvest = savings > 0 ? savings * proj.savingsAllocation / 100 : savings;
+        
+        invested += gains + toInvest + k401 + match;
+        cash += savings > 0 ? savings * (1 - proj.savingsAllocation / 100) : 0;
+        
+        if (cash < 0) { invested += cash; cash = 0; }
+        nw = invested + cash;
+        
+        data.push({ year: y, netWorth: nw, invested, cash, savings, contributions: toInvest + k401 + match, gains, salary, expenses: expAnnual });
+      }
+      
+      results[loc] = { 
+        data, 
+        final: data[proj.projectionYears].netWorth, 
+        totalGains: data.reduce((s, d) => s + d.gains, 0), 
+        totalContrib: data.reduce((s, d) => s + d.contributions, 0) 
+      };
+    });
+    
+    const sorted = [...locs].sort((a, b) => results[b].final - results[a].final);
+    results.winner = sorted[0]; 
+    results.ranking = sorted;
+    return results;
+  }, [calculations, proj, income]);
+
+  // ===========================================
+  // HELPERS
+  // ===========================================
+  const fmt = n => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
+  const fmtK = n => Math.abs(n) >= 1e6 ? `$${(n/1e6).toFixed(1)}M` : Math.abs(n) >= 1e3 ? `$${(n/1e3).toFixed(0)}K` : fmt(n);
+  const fmtPct = n => `${n.toFixed(2)}%`;
+  
+  const updateIncome = (k, v) => setIncome(p => ({ ...p, [k]: parseFloat(v) || 0 }));
+  const updateTax = (k, v) => setTaxOverride(p => ({ ...p, [k]: typeof v === 'boolean' ? v : parseFloat(v) || 0 }));
+  const updateExp = (loc, k, v) => setExpenses(p => ({ ...p, [loc]: { ...p[loc], [k]: parseFloat(v) || 0 } }));
+  const updateProj = (k, v) => setProj(p => ({ ...p, [k]: typeof v === 'boolean' ? v : parseFloat(v) || 0 }));
+
+  const locConfig = {
+    nyc: { name: 'New York City', emoji: '🗽', color: '#FF6B35', grad: 'linear-gradient(135deg, #FF6B35, #F7931E)' },
+    nj: { name: 'New Jersey', emoji: '🏡', color: '#4ECDC4', grad: 'linear-gradient(135deg, #4ECDC4, #44A08D)' },
+    philly: { name: 'Philadelphia', emoji: '🔔', color: '#667EEA', grad: 'linear-gradient(135deg, #667EEA, #764BA2)' },
+  };
+
+  // ===========================================
+  // DESKTOP STYLES
+  // ===========================================
+  const s = {
+    container: { fontFamily: "'IBM Plex Sans', system-ui, sans-serif", minHeight: '100vh', background: '#FAFBFC', padding: 32 },
+    header: { textAlign: 'center', marginBottom: 24 },
+    title: { fontSize: 38, fontWeight: 300, color: '#1A202C', margin: '0 0 8px' },
+    titleAccent: { fontWeight: 700, background: 'linear-gradient(135deg, #667EEA, #764BA2)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
+    subtitle: { fontSize: 16, color: '#64748B', margin: 0 },
+    taxYear: { display: 'inline-block', background: '#10B981', color: '#FFF', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, marginTop: 8 },
+    tabs: { display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 28 },
+    tab: { display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', fontSize: 14, fontWeight: 600, border: '2px solid #E2E8F0', borderRadius: 10, background: '#FFF', color: '#64748B', cursor: 'pointer' },
+    tabActive: { borderColor: '#667EEA', background: 'linear-gradient(135deg, #667EEA, #764BA2)', color: '#FFF' },
+    banner: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 28px', borderRadius: 14, marginBottom: 28, boxShadow: '0 6px 24px rgba(0,0,0,0.1)' },
+    bannerContent: { display: 'flex', alignItems: 'center', gap: 16 },
+    bannerEmoji: { fontSize: 44 },
+    bannerLabel: { fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.8)', marginBottom: 2 },
+    bannerName: { fontSize: 24, fontWeight: 700, color: '#FFF', marginBottom: 2 },
+    bannerSub: { fontSize: 14, color: 'rgba(255,255,255,0.9)' },
+    bannerDiff: { textAlign: 'right' },
+    diffLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginBottom: 2 },
+    diffAmt: { fontSize: 22, fontWeight: 700, color: '#FFF' },
+    grid: { display: 'grid', gridTemplateColumns: '400px 1fr', gap: 28, marginBottom: 28 },
+    panel: { background: '#FFF', borderRadius: 14, padding: 24, boxShadow: '0 4px 16px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' },
+    sectionTitle: { fontSize: 16, fontWeight: 600, color: '#1A202C', margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: 8 },
+    inputGroup: { marginBottom: 16 },
+    inputRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
+    label: { display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 },
+    inputWrap: { position: 'relative' },
+    inputPre: { position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 13 },
+    inputSuf: { position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 13 },
+    input: { width: '100%', padding: '10px 10px 10px 24px', fontSize: 14, fontWeight: 500, border: '2px solid #E2E8F0', borderRadius: 8, outline: 'none', background: '#FAFBFC', boxSizing: 'border-box' },
+    hint: { fontSize: 10, color: '#94A3B8', marginTop: 4 },
+    computed: { background: '#F0F9FF', borderRadius: 8, padding: 14, marginBottom: 20, border: '1px solid #BAE6FD' },
+    computedRow: { display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#0369A1', padding: '3px 0' },
+    computedTotal: { display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: '#0369A1', paddingTop: 6, borderTop: '1px dashed #7DD3FC', marginTop: 4 },
+    warning: { background: '#FEF3C7', borderRadius: 6, padding: '8px 12px', marginTop: 10, fontSize: 11, color: '#92400E', display: 'flex', alignItems: 'flex-start', gap: 6 },
+    subTitle: { fontSize: 13, fontWeight: 600, color: '#64748B', margin: '0 0 12px', paddingTop: 16, borderTop: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10 },
+    toggleBtn: { padding: '5px 10px', borderRadius: 5, border: 'none', color: '#FFF', fontSize: 10, fontWeight: 700, cursor: 'pointer' },
+    rateCard: { background: '#F8FAFC', borderRadius: 8, padding: '10px 12px', marginBottom: 10 },
+    rateHeader: { display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 },
+    rateVal: { fontSize: 15, fontWeight: 700, color: '#1A202C' },
+    rateDetails: { fontSize: 10, color: '#64748B', marginBottom: 6 },
+    rateBar: { height: 5, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
+    rateFill: { height: '100%', borderRadius: 3 },
+    cards: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 },
+    card: { background: '#FFF', borderRadius: 12, padding: 18, border: '2px solid #E2E8F0', position: 'relative' },
+    badge: { position: 'absolute', top: -10, right: 14, padding: '3px 10px', borderRadius: 16, fontSize: 10, fontWeight: 700, color: '#FFF' },
+    cardHead: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 },
+    cardEmoji: { fontSize: 24 },
+    cardTitle: { fontSize: 15, fontWeight: 700, color: '#1A202C', margin: 0 },
+    metric: { background: '#F8FAFC', borderRadius: 8, padding: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    metricLabel: { fontSize: 11, color: '#64748B' },
+    metricVal: { fontSize: 15, fontWeight: 700, color: '#1A202C' },
+    savingsBox: { borderRadius: 10, padding: 14, textAlign: 'center', marginBottom: 14 },
+    savingsLabel: { fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', marginBottom: 2 },
+    savingsVal: { fontSize: 22, fontWeight: 700, color: '#FFF' },
+    savingsSub: { fontSize: 12, color: 'rgba(255,255,255,0.9)' },
+    breakdown: { background: '#F8FAFC', borderRadius: 8, padding: 12, marginBottom: 14 },
+    breakdownTitle: { fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: 8 },
+    breakdownRow: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748B', padding: '3px 0' },
+    breakdownTotal: { display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, color: '#1A202C', paddingTop: 6, borderTop: '1px solid #E2E8F0', marginTop: 4 },
+    hsaNote: { fontSize: 9, color: '#DC2626', marginTop: 6, fontStyle: 'italic' },
+    expRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' },
+    expLabel: { fontSize: 11, color: '#64748B' },
+    expInput: { width: 70, padding: '5px 6px 5px 18px', fontSize: 12, border: '1px solid #E2E8F0', borderRadius: 5, textAlign: 'right' },
+    savingsBar: { marginTop: 8 },
+    savingsBarLabel: { fontSize: 10, fontWeight: 600, color: '#64748B', marginBottom: 4 },
+    savingsTrack: { height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
+    savingsFill: { height: '100%', borderRadius: 3 },
+    projCards: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 },
+    bigNum: { borderRadius: 10, padding: 18, textAlign: 'center', marginBottom: 14 },
+    bigNumLabel: { fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', marginBottom: 6 },
+    bigNumVal: { fontSize: 28, fontWeight: 700, color: '#FFF' },
+    projRow: { display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#64748B', padding: '5px 0' },
+    projTotal: { display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: '#1A202C', paddingTop: 8, borderTop: '1px solid #E2E8F0', marginTop: 6 },
+    chart: { background: '#F8FAFC', borderRadius: 10, padding: 20, marginBottom: 20 },
+    chartSvg: { width: '100%', height: 180 },
+    legend: { display: 'flex', justifyContent: 'center', gap: 20, marginTop: 12 },
+    legendItem: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 },
+    legendDot: { width: 12, height: 4, borderRadius: 2 },
+    table: { borderRadius: 8, overflow: 'hidden', border: '1px solid #E2E8F0', marginTop: 20 },
+    tableHead: { display: 'grid', gridTemplateColumns: '80px repeat(3, 1fr)', background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' },
+    tableRow: { display: 'grid', gridTemplateColumns: '80px repeat(3, 1fr)', borderBottom: '1px solid #F1F5F9' },
+    tableCell: { padding: '10px 14px', fontSize: 12, fontWeight: 500 },
+    category: { marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid #F1F5F9' },
+    catTitle: { fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: 12 },
+    checkRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 },
+    checkbox: { width: 16, height: 16, accentColor: '#667EEA' },
+    footer: { textAlign: 'center', padding: 20 },
+    disclaimer: { fontSize: 11, color: '#94A3B8', marginTop: 8 },
+  };
+
+  // ===========================================
+  // COMPARISON TAB
+  // ===========================================
+  const ComparisonTab = () => (
+    <>
+      <div style={{ ...s.banner, background: locConfig[calculations.winner].grad }}>
+        <div style={s.bannerContent}>
+          <span style={s.bannerEmoji}>{locConfig[calculations.winner].emoji}</span>
+          <div>
+            <div style={s.bannerLabel}>OPTIMAL CHOICE (MONTHLY SAVINGS)</div>
+            <div style={s.bannerName}>{locConfig[calculations.winner].name}</div>
+            <div style={s.bannerSub}>{fmt(calculations[calculations.winner].monthlySavings)}/mo · {fmt(calculations[calculations.winner].annualSavings)}/yr</div>
+          </div>
+        </div>
+        <div style={s.bannerDiff}>
+          <div style={s.diffLabel}>vs 2nd place</div>
+          <div style={s.diffAmt}>+{fmt((calculations[calculations.winner].monthlySavings - calculations[calculations.ranking[1]].monthlySavings) * 12)}/yr</div>
+        </div>
+      </div>
+
+      <div style={s.grid}>
+        <section style={s.panel}>
+          <h2 style={s.sectionTitle}>💰 Income & Deductions</h2>
+          <div style={s.inputGroup}>
+            <label style={s.label}>Annual Salary</label>
+            <div style={s.inputWrap}><span style={s.inputPre}>$</span><input style={s.input} type="number" value={income.annualSalary} onChange={e => updateIncome('annualSalary', e.target.value)} /></div>
+          </div>
+          <div style={s.inputGroup}>
+            <label style={s.label}>Annual Bonus</label>
+            <div style={s.inputWrap}><span style={s.inputPre}>$</span><input style={s.input} type="number" value={income.annualBonus} onChange={e => updateIncome('annualBonus', e.target.value)} /></div>
+          </div>
+          <div style={s.inputRow}>
+            <div style={s.inputGroup}>
+              <label style={s.label}>401(k) %</label>
+              <div style={s.inputWrap}><input style={{ ...s.input, paddingLeft: 10 }} type="number" value={income.contribution401k} onChange={e => updateIncome('contribution401k', e.target.value)} /><span style={s.inputSuf}>%</span></div>
+            </div>
+            <div style={s.inputGroup}>
+              <label style={s.label}>HSA (Annual)</label>
+              <div style={s.inputWrap}><span style={s.inputPre}>$</span><input style={s.input} type="number" value={income.hsaAnnual} onChange={e => updateIncome('hsaAnnual', e.target.value)} /></div>
+            </div>
+          </div>
+          <div style={s.inputGroup}>
+            <label style={s.label}>Other Pre-tax (Annual)</label>
+            <div style={s.inputWrap}><span style={s.inputPre}>$</span><input style={s.input} type="number" value={income.otherPreTaxAnnual} onChange={e => updateIncome('otherPreTaxAnnual', e.target.value)} /></div>
+          </div>
+          
+          <div style={s.computed}>
+            <div style={s.computedRow}><span>Gross Annual</span><span>{fmt(calculations.grossAnnual)}</span></div>
+            <div style={s.computedRow}><span>− 401(k)</span><span>{fmt(calculations.annual401k)}</span></div>
+            <div style={s.computedRow}><span>− HSA</span><span>{fmt(income.hsaAnnual)}</span></div>
+            {income.otherPreTaxAnnual > 0 && <div style={s.computedRow}><span>− Other Pre-tax</span><span>{fmt(income.otherPreTaxAnnual)}</span></div>}
+            <div style={s.computedTotal}><span>= Federal Taxable</span><span>{fmt(calculations.taxableAnnual)}</span></div>
+            {income.hsaAnnual > 0 && (
+              <div style={s.warning}>
+                <span>⚠️</span>
+                <span>PA & Philly do NOT allow HSA deductions. PA/Philly taxable = {fmt(calculations.philly.stateTaxableAnnual)} ({fmt(income.hsaAnnual)} higher)</span>
+              </div>
+            )}
+          </div>
+
+          <h3 style={s.subTitle}>
+            <button style={{ ...s.toggleBtn, background: taxOverride.useManualRates ? '#94A3B8' : '#10B981' }} onClick={() => updateTax('useManualRates', !taxOverride.useManualRates)}>{taxOverride.useManualRates ? 'MANUAL' : 'AUTO'}</button>
+            {taxOverride.useManualRates ? 'Manual Tax Rates' : 'Auto Tax Rates (2026)'}
+          </h3>
+          {!taxOverride.useManualRates && (
+            <>
+              <div style={s.rateCard}>
+                <div style={s.rateHeader}><span>🏛️ Federal</span><span style={s.rateVal}>{fmtPct(calculations.computedRates.federal)}</span></div>
+                <div style={s.rateBar}><div style={{ ...s.rateFill, width: `${Math.min(100, calculations.computedRates.federal * 2.5)}%`, background: '#6366F1' }} /></div>
+              </div>
+              {['nyc', 'nj', 'philly'].map(loc => (
+                <div key={loc} style={s.rateCard}>
+                  <div style={s.rateHeader}><span>{locConfig[loc].emoji} {locConfig[loc].name}</span><span style={s.rateVal}>{fmtPct(calculations[loc].combinedStatLocalRate)}</span></div>
+                  <div style={s.rateDetails}>
+                    State: {fmtPct(calculations[loc].stateEffectiveRate)}
+                    {calculations[loc].localEffectiveRate > 0 && ` + Local: ${fmtPct(calculations[loc].localEffectiveRate)}`}
+                    {loc === 'philly' && income.hsaAnnual > 0 && ' (HSA not deductible)'}
+                  </div>
+                  <div style={s.rateBar}><div style={{ ...s.rateFill, width: `${Math.min(100, calculations[loc].combinedStatLocalRate * 5)}%`, background: locConfig[loc].grad }} /></div>
+                </div>
+              ))}
+            </>
+          )}
+        </section>
+
+        <section style={s.panel}>
+          <h2 style={s.sectionTitle}>📊 Side-by-Side Comparison</h2>
+          <div style={s.cards}>
+            {['nyc', 'nj', 'philly'].map(loc => {
+              const c = calculations[loc], cfg = locConfig[loc], win = calculations.winner === loc;
+              return (
+                <div key={loc} style={{ ...s.card, borderColor: win ? cfg.color : '#E2E8F0' }}>
+                  {win && <div style={{ ...s.badge, background: cfg.grad }}>✓ BEST</div>}
+                  <div style={s.cardHead}><span style={s.cardEmoji}>{cfg.emoji}</span><h3 style={s.cardTitle}>{cfg.name}</h3></div>
+                  <div style={s.metric}><span style={s.metricLabel}>Net Monthly</span><span style={s.metricVal}>{fmt(c.netMonthly)}</span></div>
+                  <div style={s.metric}><span style={s.metricLabel}>Expenses</span><span style={s.metricVal}>{fmt(c.totalExpenses)}</span></div>
+                  <div style={{ ...s.savingsBox, background: cfg.grad }}>
+                    <div style={s.savingsLabel}>Monthly Savings</div>
+                    <div style={s.savingsVal}>{fmt(c.monthlySavings)}</div>
+                    <div style={s.savingsSub}>{fmt(c.annualSavings)}/yr</div>
+                  </div>
+                  <div style={s.breakdown}>
+                    <div style={s.breakdownTitle}>Tax Breakdown</div>
+                    <div style={s.breakdownRow}><span>Federal ({fmtPct(c.federalEffectiveRate)})</span><span>{fmt(c.federalTax)}</span></div>
+                    <div style={s.breakdownRow}><span>State ({fmtPct(c.stateEffectiveRate)})</span><span>{fmt(c.stateTax)}</span></div>
+                    <div style={s.breakdownRow}><span>Local ({fmtPct(c.localEffectiveRate)})</span><span>{fmt(c.localTax)}</span></div>
+                    <div style={s.breakdownTotal}><span>Total</span><span>{fmt(c.totalTax)}/mo</span></div>
+                    {loc === 'philly' && income.hsaAnnual > 0 && (
+                      <div style={s.hsaNote}>* HSA ({fmt(income.hsaAnnual)}) not deductible for PA/Philly</div>
+                    )}
+                  </div>
+                  <div style={s.breakdownTitle}>Monthly Expenses</div>
+                  {['rent', 'utilities', 'transportation', 'food', 'entertainment', 'healthcare', 'misc'].map(k => (
+                    <div key={k} style={s.expRow}>
+                      <span style={s.expLabel}>{k.charAt(0).toUpperCase() + k.slice(1)}</span>
+                      <div style={{ position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 11 }}>$</span>
+                        <input style={s.expInput} type="number" value={expenses[loc][k]} onChange={e => updateExp(loc, k, e.target.value)} />
+                      </div>
+                    </div>
+                  ))}
+                  <div style={s.savingsBar}>
+                    <div style={s.savingsBarLabel}>Savings Rate: {fmtPct(Math.max(0, c.savingsRate))}</div>
+                    <div style={s.savingsTrack}><div style={{ ...s.savingsFill, width: `${Math.max(0, Math.min(100, c.savingsRate))}%`, background: cfg.grad }} /></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+    </>
+  );
+
+  // ===========================================
+  // PROJECTIONS TAB
+  // ===========================================
+  const ProjectionsTab = () => {
+    const maxNW = Math.max(...['nyc', 'nj', 'philly'].map(l => projections[l].final));
+    return (
+      <>
+        <div style={{ ...s.banner, background: locConfig[projections.winner].grad }}>
+          <div style={s.bannerContent}>
+            <span style={s.bannerEmoji}>{locConfig[projections.winner].emoji}</span>
+            <div>
+              <div style={s.bannerLabel}>HIGHEST NET WORTH IN {proj.projectionYears} YEARS</div>
+              <div style={s.bannerName}>{locConfig[projections.winner].name}</div>
+              <div style={s.bannerSub}>{fmtK(projections[projections.winner].final)} projected</div>
+            </div>
+          </div>
+          <div style={s.bannerDiff}>
+            <div style={s.diffLabel}>vs 2nd place</div>
+            <div style={s.diffAmt}>+{fmtK(projections[projections.winner].final - projections[projections.ranking[1]].final)}</div>
+          </div>
+        </div>
+
+        <div style={s.grid}>
+          <section style={s.panel}>
+            <h2 style={s.sectionTitle}>⚙️ Projection Assumptions</h2>
+            <div style={s.category}>
+              <div style={s.catTitle}>Starting Point</div>
+              <div style={s.inputGroup}>
+                <label style={s.label}>Current Net Worth</label>
+                <div style={s.inputWrap}><span style={s.inputPre}>$</span><input style={s.input} type="number" value={proj.currentNetWorth} onChange={e => updateProj('currentNetWorth', e.target.value)} /></div>
+              </div>
+              <div style={s.inputGroup}>
+                <label style={s.label}>Projection Years</label>
+                <div style={s.inputWrap}><input style={{ ...s.input, paddingLeft: 10 }} type="number" value={proj.projectionYears} onChange={e => updateProj('projectionYears', e.target.value)} min="1" max="40" /><span style={s.inputSuf}>yrs</span></div>
+              </div>
+            </div>
+            <div style={s.category}>
+              <div style={s.catTitle}>Growth Rates</div>
+              <div style={s.inputGroup}>
+                <label style={s.label}>Investment Return</label>
+                <div style={s.inputWrap}><input style={{ ...s.input, paddingLeft: 10 }} type="number" value={proj.investmentReturnRate} onChange={e => updateProj('investmentReturnRate', e.target.value)} step="0.5" /><span style={s.inputSuf}>%</span></div>
+                <div style={s.hint}>7% = historical market avg</div>
+              </div>
+              <div style={s.inputGroup}>
+                <label style={s.label}>Salary Growth</label>
+                <div style={s.inputWrap}><input style={{ ...s.input, paddingLeft: 10 }} type="number" value={proj.salaryGrowthRate} onChange={e => updateProj('salaryGrowthRate', e.target.value)} step="0.5" /><span style={s.inputSuf}>%</span></div>
+              </div>
+              <div style={s.inputGroup}>
+                <label style={s.label}>Inflation</label>
+                <div style={s.inputWrap}><input style={{ ...s.input, paddingLeft: 10 }} type="number" value={proj.inflationRate} onChange={e => updateProj('inflationRate', e.target.value)} step="0.5" /><span style={s.inputSuf}>%</span></div>
+              </div>
+            </div>
+            <div style={s.category}>
+              <div style={s.catTitle}>Savings Allocation</div>
+              <div style={s.inputGroup}>
+                <label style={s.label}>% Invested vs Cash</label>
+                <div style={s.inputWrap}><input style={{ ...s.input, paddingLeft: 10 }} type="number" value={proj.savingsAllocation} onChange={e => updateProj('savingsAllocation', e.target.value)} min="0" max="100" /><span style={s.inputSuf}>%</span></div>
+                <div style={s.hint}>{proj.savingsAllocation}% invested, {100 - proj.savingsAllocation}% cash</div>
+              </div>
+            </div>
+            <div style={s.category}>
+              <div style={s.catTitle}>401(k) Employer Match</div>
+              <div style={s.checkRow}>
+                <input type="checkbox" style={s.checkbox} checked={proj.includeEmployerMatch} onChange={e => updateProj('includeEmployerMatch', e.target.checked)} />
+                <span style={{ fontSize: 13 }}>Include employer match</span>
+              </div>
+              {proj.includeEmployerMatch && (
+                <div style={s.inputRow}>
+                  <div style={s.inputGroup}>
+                    <label style={s.label}>Match %</label>
+                    <div style={s.inputWrap}><input style={{ ...s.input, paddingLeft: 10 }} type="number" value={proj.employerMatchPercent} onChange={e => updateProj('employerMatchPercent', e.target.value)} /><span style={s.inputSuf}>%</span></div>
+                  </div>
+                  <div style={s.inputGroup}>
+                    <label style={s.label}>Up to</label>
+                    <div style={s.inputWrap}><input style={{ ...s.input, paddingLeft: 10 }} type="number" value={proj.employerMatchLimit} onChange={e => updateProj('employerMatchLimit', e.target.value)} /><span style={s.inputSuf}>%</span></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section style={s.panel}>
+            <h2 style={s.sectionTitle}>📈 Net Worth Projections</h2>
+            <div style={s.chart}>
+              <svg style={s.chartSvg} viewBox="0 0 100 50" preserveAspectRatio="none">
+                {['nyc', 'nj', 'philly'].map(loc => {
+                  const pts = projections[loc].data.map((d, i) => `${i / proj.projectionYears * 100},${50 - d.netWorth / maxNW * 48}`).join(' ');
+                  return <polyline key={loc} points={pts} fill="none" stroke={locConfig[loc].color} strokeWidth="0.8" vectorEffect="non-scaling-stroke" />;
+                })}
+              </svg>
+              <div style={s.legend}>
+                {['nyc', 'nj', 'philly'].map(loc => (
+                  <div key={loc} style={s.legendItem}><div style={{ ...s.legendDot, background: locConfig[loc].color }} />{locConfig[loc].name}</div>
+                ))}
+              </div>
+            </div>
+
+            <div style={s.projCards}>
+              {['nyc', 'nj', 'philly'].map(loc => {
+                const p = projections[loc], cfg = locConfig[loc], win = projections.winner === loc;
+                return (
+                  <div key={loc} style={{ ...s.card, borderColor: win ? cfg.color : '#E2E8F0' }}>
+                    {win && <div style={{ ...s.badge, background: cfg.grad }}>✓ BEST</div>}
+                    <div style={s.cardHead}><span style={s.cardEmoji}>{cfg.emoji}</span><h3 style={s.cardTitle}>{cfg.name}</h3></div>
+                    <div style={{ ...s.bigNum, background: cfg.grad }}>
+                      <div style={s.bigNumLabel}>Net Worth in {proj.projectionYears} Yrs</div>
+                      <div style={s.bigNumVal}>{fmtK(p.final)}</div>
+                    </div>
+                    <div style={s.breakdown}>
+                      <div style={s.projRow}><span>Starting</span><span>{fmt(proj.currentNetWorth)}</span></div>
+                      <div style={s.projRow}><span>Total Contributions</span><span style={{ color: '#059669' }}>+{fmtK(p.totalContrib)}</span></div>
+                      <div style={s.projRow}><span>Investment Gains</span><span style={{ color: '#059669' }}>+{fmtK(p.totalGains)}</span></div>
+                      <div style={s.projTotal}><span>Final</span><span>{fmtK(p.final)}</span></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={s.table}>
+              <div style={s.tableHead}>
+                <div style={s.tableCell}>Year</div>
+                {['nyc', 'nj', 'philly'].map(loc => <div key={loc} style={{ ...s.tableCell, color: locConfig[loc].color }}>{locConfig[loc].emoji} {locConfig[loc].name}</div>)}
+              </div>
+              {[0, Math.floor(proj.projectionYears / 4), Math.floor(proj.projectionYears / 2), Math.floor(proj.projectionYears * 3 / 4), proj.projectionYears].filter((v, i, a) => a.indexOf(v) === i).map(y => (
+                <div key={y} style={{ ...s.tableRow, background: y === proj.projectionYears ? '#F0FDF4' : 'transparent' }}>
+                  <div style={s.tableCell}>{y === 0 ? 'Today' : `Year ${y}`}</div>
+                  {['nyc', 'nj', 'philly'].map(loc => <div key={loc} style={s.tableCell}>{fmtK(projections[loc].data[y]?.netWorth || 0)}</div>)}
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </>
+    );
+  };
+
+  // ===========================================
+  // MAIN RENDER
+  // ===========================================
+  return (
+    <div style={s.container}>
+      <header style={s.header}>
+        <h1 style={s.title}><span style={s.titleAccent}>Where Should You Live?</span><br />Financial Comparison Tool</h1>
+        <p style={s.subtitle}>Compare net income, expenses, savings, and long-term wealth across NYC, NJ, and Philadelphia</p>
+        <span style={s.taxYear}>📅 2026 Tax Year</span>
+      </header>
+
+      <div style={s.tabs}>
+        <button style={{ ...s.tab, ...(activeTab === 'comparison' ? s.tabActive : {}) }} onClick={() => setActiveTab('comparison')}>💰 Monthly Comparison</button>
+        <button style={{ ...s.tab, ...(activeTab === 'projections' ? s.tabActive : {}) }} onClick={() => setActiveTab('projections')}>📈 Net Worth Projections</button>
+      </div>
+
+      {activeTab === 'comparison' ? <ComparisonTab /> : <ProjectionsTab />}
+
+      <footer style={s.footer}>
+        <p>💡 <strong>Tip:</strong> Changes in either tab automatically update projections!</p>
+        <p style={s.disclaimer}>Tax rates updated for 2026 (Federal brackets per IRS Rev. Proc. 2025-32, NY per FY2026 budget, Philly wage tax effective July 2025). Projections are estimates.</p>
+      </footer>
+    </div>
+  );
+}
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<FinancialComparisonToolDesktop />);
+  </script>
+</body>
+</html>
