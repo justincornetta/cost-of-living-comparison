@@ -73,12 +73,13 @@ export default function FinancialComparisonTool() {
   // STATE
   // ===========================================
   const [activeTab, setActiveTab] = useState('comparison');
-  const [income, setIncome] = useState({ 
-    annualSalary: 90000, 
-    annualBonus: 0, 
-    contribution401k: 4, 
-    hsaAnnual: 3850, 
-    otherPreTaxAnnual: 0 
+  const [income, setIncome] = useState({
+    annualSalary: 90000,
+    annualBonus: 0,
+    contribution401k: 4,
+    hsaAnnual: 3850,
+    healthInsuranceMonthly: 120,
+    otherPreTaxAnnual: 0
   });
   const [taxOverride, setTaxOverride] = useState({ 
     useManualRates: false, 
@@ -128,10 +129,11 @@ export default function FinancialComparisonTool() {
     
     const grossAnnual = income.annualSalary + income.annualBonus;
     const annual401k = income.annualSalary * (income.contribution401k / 100);
-    const federalPreTax = annual401k + income.hsaAnnual + income.otherPreTaxAnnual;
+    const healthInsuranceAnnual = income.healthInsuranceMonthly * 12;
+    const federalPreTax = annual401k + income.hsaAnnual + income.otherPreTaxAnnual + healthInsuranceAnnual;
     const federalTaxableAnnual = grossAnnual - federalPreTax;
-    const paTaxableAnnual = grossAnnual - annual401k;
-    const phillyTaxableAnnual = grossAnnual - annual401k;
+    const paTaxableAnnual = grossAnnual - annual401k - healthInsuranceAnnual;
+    const phillyTaxableAnnual = grossAnnual - annual401k - healthInsuranceAnnual;
 
     const fedTax = taxOverride.useManualRates 
       ? federalTaxableAnnual * taxOverride.manualFederal / 100 
@@ -288,7 +290,7 @@ export default function FinancialComparisonTool() {
         const expAnnual = (calculations[effLoc].totalExpenses + rentDelta) * 12 * Math.pow(1 + proj.inflationRate / 100, y);
         const gross = salary + income.annualBonus * salaryMult;
         const k401 = salary * income.contribution401k / 100;
-        const preTaxTotal = k401 + income.hsaAnnual + income.otherPreTaxAnnual;
+        const preTaxTotal = k401 + income.hsaAnnual + income.otherPreTaxAnnual + income.healthInsuranceMonthly * 12;
         const effectiveRate = calculations[effLoc].effectiveTaxRate / 100;
         const taxes = gross * effectiveRate;
         const net = gross - preTaxTotal - taxes;
@@ -575,10 +577,18 @@ export default function FinancialComparisonTool() {
             </div>
           </div>
         </div>
-        
+        <div style={s.inputGroup}>
+          <label style={s.label}>Health Insurance</label>
+          <div style={s.inputWrap}>
+            <span style={s.inputPre}>$</span>
+            <input style={s.input} type="number" inputMode="numeric" value={income.healthInsuranceMonthly} onChange={e => updateIncome('healthInsuranceMonthly', e.target.value)} />
+            <span style={s.inputSuf}>/mo</span>
+          </div>
+        </div>
+
         <div style={s.computed}>
           <div style={s.computedRow}><span>Gross Annual</span><span>{fmt(calculations.grossAnnual)}</span></div>
-          <div style={s.computedRow}><span>− Pre-tax Deductions</span><span>{fmt(calculations.annual401k + income.hsaAnnual)}</span></div>
+          <div style={s.computedRow}><span>− Pre-tax Deductions</span><span>{fmt(calculations.annual401k + income.hsaAnnual + income.healthInsuranceMonthly * 12)}</span></div>
           <div style={s.computedTotal}><span>Federal Taxable</span><span>{fmt(calculations.taxableAnnual)}</span></div>
           {income.hsaAnnual > 0 && (
             <div style={s.warning}>

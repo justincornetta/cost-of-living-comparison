@@ -93,12 +93,13 @@ function FinancialComparisonToolDesktop() {
   // ===========================================
   const [activeTab, setActiveTab] = useState('comparison');
   
-  const [income, setIncome] = useState({ 
-    annualSalary: 90000, 
-    annualBonus: 0, 
-    contribution401k: 4, 
-    hsaAnnual: 3850, 
-    otherPreTaxAnnual: 0 
+  const [income, setIncome] = useState({
+    annualSalary: 90000,
+    annualBonus: 0,
+    contribution401k: 4,
+    hsaAnnual: 3850,
+    healthInsuranceMonthly: 120,
+    otherPreTaxAnnual: 0
   });
   
   const [taxOverride, setTaxOverride] = useState({ 
@@ -151,10 +152,11 @@ function FinancialComparisonToolDesktop() {
     
     const grossAnnual = income.annualSalary + income.annualBonus;
     const annual401k = income.annualSalary * (income.contribution401k / 100);
-    const federalPreTax = annual401k + income.hsaAnnual + income.otherPreTaxAnnual;
+    const healthInsuranceAnnual = income.healthInsuranceMonthly * 12;
+    const federalPreTax = annual401k + income.hsaAnnual + income.otherPreTaxAnnual + healthInsuranceAnnual;
     const federalTaxableAnnual = grossAnnual - federalPreTax;
-    const paTaxableAnnual = grossAnnual - annual401k;
-    const phillyTaxableAnnual = grossAnnual - annual401k;
+    const paTaxableAnnual = grossAnnual - annual401k - healthInsuranceAnnual;
+    const phillyTaxableAnnual = grossAnnual - annual401k - healthInsuranceAnnual;
 
     const fedTax = taxOverride.useManualRates 
       ? federalTaxableAnnual * taxOverride.manualFederal / 100 
@@ -326,7 +328,7 @@ function FinancialComparisonToolDesktop() {
 
         const gross = salary + income.annualBonus * salaryMult;
         const k401 = salary * income.contribution401k / 100;
-        const preTaxTotal = k401 + income.hsaAnnual + income.otherPreTaxAnnual;
+        const preTaxTotal = k401 + income.hsaAnnual + income.otherPreTaxAnnual + income.healthInsuranceMonthly * 12;
 
         const effectiveRate = calculations[effLoc].effectiveTaxRate / 100;
         const taxes = gross * effectiveRate;
@@ -587,15 +589,22 @@ function FinancialComparisonToolDesktop() {
               <div style={s.inputWrap}><span style={s.inputPre}>$</span><input style={s.input} type="number" value={income.hsaAnnual} onChange={e => updateIncome('hsaAnnual', e.target.value)} /></div>
             </div>
           </div>
-          <div style={s.inputGroup}>
-            <label style={s.label}>Other Pre-tax (Annual)</label>
-            <div style={s.inputWrap}><span style={s.inputPre}>$</span><input style={s.input} type="number" value={income.otherPreTaxAnnual} onChange={e => updateIncome('otherPreTaxAnnual', e.target.value)} /></div>
+          <div style={s.inputRow}>
+            <div style={s.inputGroup}>
+              <label style={s.label}>Health Insurance</label>
+              <div style={s.inputWrap}><span style={s.inputPre}>$</span><input style={s.input} type="number" value={income.healthInsuranceMonthly} onChange={e => updateIncome('healthInsuranceMonthly', e.target.value)} /><span style={s.inputSuf}>/mo</span></div>
+            </div>
+            <div style={s.inputGroup}>
+              <label style={s.label}>Other Pre-tax (Annual)</label>
+              <div style={s.inputWrap}><span style={s.inputPre}>$</span><input style={s.input} type="number" value={income.otherPreTaxAnnual} onChange={e => updateIncome('otherPreTaxAnnual', e.target.value)} /></div>
+            </div>
           </div>
           
           <div style={s.computed}>
             <div style={s.computedRow}><span>Gross Annual</span><span>{fmt(calculations.grossAnnual)}</span></div>
             <div style={s.computedRow}><span>− 401(k)</span><span>{fmt(calculations.annual401k)}</span></div>
             <div style={s.computedRow}><span>− HSA</span><span>{fmt(income.hsaAnnual)}</span></div>
+            {income.healthInsuranceMonthly > 0 && <div style={s.computedRow}><span>− Health Insurance</span><span>{fmt(income.healthInsuranceMonthly * 12)}</span></div>}
             {income.otherPreTaxAnnual > 0 && <div style={s.computedRow}><span>− Other Pre-tax</span><span>{fmt(income.otherPreTaxAnnual)}</span></div>}
             <div style={s.computedTotal}><span>= Federal Taxable</span><span>{fmt(calculations.taxableAnnual)}</span></div>
             {income.hsaAnnual > 0 && (
@@ -717,6 +726,7 @@ function FinancialComparisonToolDesktop() {
           <span style={{ color: '#64748B' }}>Bonus</span><span style={{ fontWeight: 600 }}>{fmt(snap.income.annualBonus)}</span>
           <span style={{ color: '#64748B' }}>401(k)</span><span style={{ fontWeight: 600 }}>{snap.income.contribution401k}%</span>
           <span style={{ color: '#64748B' }}>HSA</span><span style={{ fontWeight: 600 }}>{fmt(snap.income.hsaAnnual)}</span>
+          <span style={{ color: '#64748B' }}>Health Ins.</span><span style={{ fontWeight: 600 }}>{fmt((snap.income.healthInsuranceMonthly || 0) * 12)}</span>
           <span style={{ color: '#64748B' }}>Net Worth</span><span style={{ fontWeight: 600 }}>{fmt(snap.proj.currentNetWorth)}</span>
           <span style={{ color: '#64748B' }}>Horizon</span><span style={{ fontWeight: 600 }}>{snap.proj.projectionYears} yrs</span>
           <span style={{ color: '#64748B' }}>Return</span><span style={{ fontWeight: 600 }}>{snap.proj.investmentReturnRate}%</span>
